@@ -1,0 +1,94 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Monk-IV
+
+//@version=5
+
+indicator('Monk COT Index (Disaggregated)', format=format.volume, precision=0)
+
+
+ 
+import TradingView/LibraryCOT/2 as cot  
+
+Producers_Long = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Producer Merchant Positions", metricDirection = "Long", metricType = "All")
+Producers_Short = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Producer Merchant Positions", metricDirection = "Short", metricType = "All")
+cot_lspecs_long = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Managed Money Positions", metricDirection = "Long", metricType = "All")
+cot_lspecs_short = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Managed Money Positions", metricDirection = "Short", metricType = "All")
+cot_sspecs_long = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Nonreportable Positions", metricDirection = "Long", metricType = "All")
+cot_sspecs_short = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Nonreportable Positions", metricDirection = "Short", metricType = "All")
+Dealer_Long = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Dealer Positions", metricDirection = "Long", metricType = "All")
+Dealer_Short = cot.COTTickerid(COTType = "Disaggregated", CFTCCode = cot.convertRootToCOTCode("Auto"), includeOptions = false, metricName = "Dealer Positions", metricDirection = "Short", metricType = "All")
+
+
+
+Pro_long = request.security(Producers_Long, "1D", close, ignore_invalid_symbol = true)
+Pro_short = request.security(Producers_Short, "1D", close, ignore_invalid_symbol = true)
+lspecs_long = request.security(cot_lspecs_long, "1D", close, ignore_invalid_symbol = true)
+lspecs_short = request.security(cot_lspecs_short, "1D", close, ignore_invalid_symbol = true)
+sspecs_long = request.security(cot_sspecs_long, "1D", close, ignore_invalid_symbol = true)
+sspecs_short = request.security(cot_sspecs_short, "1D", close, ignore_invalid_symbol = true)
+dealer_long = request.security(Dealer_Long, "1D", close, ignore_invalid_symbol = true)
+dealer_short = request.security(Dealer_Short, "1D", close, ignore_invalid_symbol = true)
+
+// Define lookback periods
+val26 = 26 // 6 months
+val52 = 52 // 1 year
+val156 = 156 // 3 years
+
+Six_Months = val26
+One_Year = val52
+Three_Years = val156
+
+// Input for setting the value of n
+n_option = input.int(title="Lookback Period (Weeks)", options=[Three_Years, One_Year, Six_Months], defval=Three_Years)
+
+// Select lookback period based on user input
+n = n_option == Six_Months ? val26 : n_option == One_Year ? val52 : val156
+
+// Calculate Net Long Values
+ProducersNET = Pro_long - Pro_short
+netNoncom = lspecs_long - lspecs_short
+netSpec = sspecs_long - sspecs_short
+netDealer = dealer_long - dealer_short
+
+// Calculate highest and lowest net positions
+highestNet_Commericals = ta.highest(ProducersNET, n)
+LowestNet_Commericals = ta.lowest(ProducersNET, n)
+HighestNet_None_Commercials = ta.highest(netNoncom, n)
+LowestNet_None_Commercials = ta.lowest(netNoncom, n)
+HighestNet_Retail = ta.highest(netSpec, n)
+LowestNet_Retail = ta.lowest(netSpec, n)
+HighestNet_Dealer = ta.highest(netDealer, n)
+LowestNet_Dealer = ta.lowest(netDealer, n)
+
+// Calculate COT index
+ProducersIndex = (ProducersNET - LowestNet_Commericals) / (highestNet_Commericals - LowestNet_Commericals) * 100 
+NonComIndex = (netNoncom - LowestNet_None_Commercials) / (HighestNet_None_Commercials - LowestNet_None_Commercials) * 100 
+RetailIndex = (netSpec - LowestNet_Retail) / (HighestNet_Retail - LowestNet_Retail) * 100
+DealerIndex = (netDealer - LowestNet_Dealer) / (HighestNet_Dealer - LowestNet_Dealer) * 100
+
+// Index Colours
+ComColor = color.new(color.rgb(128, 25, 34), 20)
+NonComColor = color.new(color.rgb(81, 45, 168), 33)
+RetailColor = color.new(color.rgb(0, 51, 42), 33)
+
+// Colours
+BackgroundColor = color.new(color.rgb(221, 230, 243), 0)
+BuyZoneColor = color.new(color.rgb(128, 222, 234, 80), 80)
+SellZoneColor = color.new(color.rgb(255, 245, 157), 80)
+
+// Plot the indices
+plot(ProducersIndex, color=ComColor, linewidth=2, title="Producers")
+plot(NonComIndex, color=NonComColor, linewidth=2, title="Managed Money")
+plot(RetailIndex, color=RetailColor, linewidth=2, title="Retail")
+plot(DealerIndex, color=RetailColor, linewidth=2, title="Dealer")
+
+// Plot overvalued and undervalued lines (always on)
+SellSignal = hline(20, color=#0f5e12, linestyle=hline.style_dashed, linewidth=1, editable = false)
+BuySignal = hline(80, color=#0f5e12, linestyle=hline.style_dashed, linewidth=1, editable = false)
+Top = hline(109, color=#0f5e12, linestyle=hline.style_dashed, linewidth=1, editable = false)
+Bottom = hline(-9, color=#0f5e12, linestyle=hline.style_dashed, linewidth=1, editable = false)
+
+// Fills 
+fill(SellSignal, BuySignal, color=BackgroundColor, editable = true, title="Background Fill")
+fill(Top,BuySignal, color=BuyZoneColor, title="Buy Zone")
+fill(Bottom, SellSignal,color=SellZoneColor, title="Sell Zone")
